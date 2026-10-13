@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#191b1d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Телесуфлёр"><link rel="apple-touch-icon" href="icon-180.png"><link rel="manifest" href="manifest.webmanifest"><title>Телесуфлёр</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header class="header"><div class="brand">Телесуфлёр <span>Локально · без облака</span></div><button id="openLibrary">Сценарии</button></header>
+<main id="reader" class="reader">
+ <div class="reading-mark" aria-hidden="true"></div>
+ <div id="viewport" class="viewport" tabindex="0" aria-label="Текст сценария. Можно прокручивать вручную."><div id="script" class="script"></div></div>
+ <div id="empty" class="empty"><h1>Текст перед глазами</h1><p>Выберите сценарий или вставьте свой текст.</p><button id="emptyOpen" class="primary">Открыть сценарии</button></div>
+ <div class="reader-meta"><span id="currentTitle">Сценарий не выбран</span><span id="progress">0%</span></div>
+</main>
+<footer class="controls">
+ <div class="transport"><button id="reset" aria-label="Вернуться к началу" title="К началу">↥</button><button id="play" class="primary" disabled>Старт</button></div>
+ <label class="setting" for="speed">Скорость <output id="speedValue">40 px/с</output><input id="speed" type="range" min="5" max="160" step="5" value="40"></label>
+ <label class="setting" for="font">Шрифт <output id="fontValue">48 px</output><input id="font" type="range" min="24" max="96" step="2" value="48"></label>
+ <div class="view-actions"><button id="mirror" aria-pressed="false">Зеркало</button><button id="fullscreen" aria-pressed="false">На весь экран</button></div>
+</footer>
+<dialog id="library"><div class="dialog-head"><div><span class="eyebrow">ВАША БИБЛИОТЕКА</span><h1>Сценарии</h1></div><button id="closeLibrary" aria-label="Закрыть сценарии"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 14 14M19 5 5 19"/></svg></button></div>
+ <div class="library-body"><div class="library-grid"><section class="saved"><div class="section-heading"><h2>На устройстве</h2><button id="refresh">Обновить</button></div><p class="library-note">Выбранные и добавленные тексты хранятся в этом браузере.</p><div id="scriptList" class="script-list"></div>
+ <details class="connection"><summary>Передать с Mac на iPhone</summary><ol><li>Подключите оба устройства к одной Wi-Fi сети.</li><li>На iPhone откройте этот адрес в Safari:</li></ol><a id="lanUrl"></a><p>Код подключения: <strong id="pairCode">смотрите на Mac</strong></p><p>Введите шесть цифр один раз. Браузер запомнит подключение.</p><p class="muted">Этот адрес работает, пока на Mac запущен сервер. Он может измениться при смене сети. Актуальный адрес всегда показан здесь на Mac.</p></details>
+ <details class="offline-info"><summary>Работать без Mac</summary><p id="offlineState">Проверяем автономный запуск…</p><p>На iPhone: Safari → «Поделиться» → «На экран Домой». Добавляйте и проверяйте сценарии уже в приложении с иконки.</p><p class="muted">Тексты остаются на устройстве. Очистка данных браузера удалит локальные копии.</p></details>
+ <form id="connectForm" class="connect" hidden><label for="accessKey">Код с Mac</label><div class="connect-row"><input id="accessKey" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="6 цифр" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"><button class="primary">Подключить</button></div></form>
+ </section><section class="editor"><h2>Добавить текст</h2><label for="title">Название</label><input id="title" maxlength="150" placeholder="Например, выпуск 01"><div class="text-heading"><label for="text">Сценарий</label><label class="file-button" for="file">Импорт файла<input id="file" type="file" accept=".txt,.docx,.doc,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label></div><div id="text" contenteditable="true" role="textbox" aria-label="Сценарий" aria-multiline="true" data-placeholder="Вставьте текст для чтения…" spellcheck="false"></div><p class="muted">TXT или Word .docx. Сохраняем абзацы, списки и выделения; размер текста настраивается для чтения.</p><button id="save" class="primary">Сохранить и читать</button><p class="muted">Каждое сохранение создаёт отдельную копию.</p></section></div>
+ <p id="status" class="status" role="status" aria-live="polite"></p></div>
+</dialog>
+<script src="vendor/jszip.min.js"></script><script src="docx.js"></script><script src="app.js"></script></body></html>
