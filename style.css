@@ -37,3 +37,5 @@ dialog[open]{display:flex;flex-direction:column}
 
 /* Keep the next spoken line at the top, with room for the following text. */
 .reader .script{padding-top:20px}.reading-mark{top:20px}.reader:before{height:12px}
+
+.voice-state.mic-required{background:#522b2f;color:#ffe1e1}.voice-state.mic-required #voiceLabel{font-weight:600}
