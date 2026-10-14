@@ -5,6 +5,9 @@
  const notice=(text,error=false)=>{el('voiceMessage').textContent=bindRussian(text);el('voiceMessage').classList.toggle('error',error);if(error){lastError=text;el('voiceState').hidden=false;el('voiceState').classList.add('error');state('Голос: ошибка · Настройки');el('voiceState').title=text;el('voiceTranscript').textContent=bindRussian(text);el('voiceExpected').textContent='';el('voiceTranscript').style.whiteSpace='normal';}};
  const state=text=>{el('voiceLabel').textContent=bindRussian(text);};
  const isHybrid=()=>readMode==='hybrid';
+ const readingInset=()=>20;
+ function microphoneHint(){el('voiceState').hidden=false;el('voiceState').classList.remove('error');state('Подключите микрофон в настройках');}
+ function wordPosition(index){const next=spans[Math.min(index,spans.length-1)];if(!next)return viewport.scrollTop;return Math.max(0,Math.min(viewport.scrollHeight-viewport.clientHeight,viewport.scrollTop+next.getBoundingClientRect().top-viewport.getBoundingClientRect().top-readingInset()));}
  function buttons(){el('voiceDownload').disabled=downloading||cached||!isSecureContext||!('caches' in window)||!('serviceWorker' in navigator);el('voiceDownload').textContent=cached?'Модель сохранена':downloading?'Загрузка…':'Загрузить модель';el('voiceStart').disabled=!cached||!active||busy||!isSecureContext||!navigator.mediaDevices?.getUserMedia;el('mic').setAttribute('aria-pressed',String(busy));el('mic').setAttribute('aria-label',busy?'Выключить микрофон':'Включить микрофон');el('mic').title=busy?'Выключить микрофон':'Включить голос';el('play').disabled=!active||(busy&&!connected&&readMode!=='speed');}
  async function checkCache(){try{cached=!!await (await caches.open(CACHE)).match(modelURL);}catch{cached=false;}buttons();}
  function stop(releaseModel=false){
@@ -18,18 +21,18 @@
   el('voiceState').hidden=true;el('openVoice').textContent='Настройки';el('play').textContent='Старт';buttons();
  }
  function pauseMovement(){moving=false;cancelAnimationFrame(hybridFrame);hybridFrame=0;haltMovement();el('play').textContent='Старт';if(busy)state('Микрофон включён · пауза');}
- function resumeMovement(){if(!connected||readMode==='speed')return;moving=true;anchor();lastMatch=0;pace=1;el('play').textContent='Пауза';state(isHybrid()?'Скорость + голос':'По голосу · слушаю');if(isHybrid())startHybrid();keepAwake();}
- function anchor(){const mark=viewport.getBoundingClientRect().top+viewport.clientHeight*.28;cursor=spans.findIndex(s=>s.getBoundingClientRect().bottom>=mark);if(cursor<0)cursor=words.length;previousHeard='';lastAccepted='';expected();}
+ function resumeMovement(){if(!connected||readMode==='speed')return;moving=true;anchor();lastMatch=0;pace=1;el('play').textContent='Пауза';state(isHybrid()?'Скорость + голос':'По голосу · слушаю');if(isHybrid())startHybrid();else{targetScroll=Math.max(viewport.scrollTop,wordPosition(cursor));follow();}keepAwake();}
+ function anchor(){const mark=viewport.getBoundingClientRect().top+readingInset();cursor=spans.findIndex(s=>s.getBoundingClientRect().bottom>=mark);if(cursor<0)cursor=words.length;previousHeard='';lastAccepted='';expected();}
  function startHybrid(){
   cancelAnimationFrame(hybridFrame);let previous=performance.now(),scrollPosition=viewport.scrollTop,lastWritten=viewport.scrollTop,statusAt=0;
   function step(now){if(!busy||!moving||!isHybrid())return;const dt=Math.min(100,now-previous);previous=now;
-   const factor=lastMatch&&now-lastMatch<7000?Math.max(.15,Math.min(2.25,1+(readingTarget-viewport.scrollTop)/Math.max(60,viewport.clientHeight*.7))):1;
+   const factor=lastMatch&&now-lastMatch<7000?Math.max(.15,Math.min(Math.max(4,240/Number(el('speed').value)),1+(readingTarget-viewport.scrollTop)/Math.max(24,Number(el('speed').value)*1.2))):1;
    pace+=(factor-pace)*Math.min(1,dt/500);if(Math.abs(viewport.scrollTop-lastWritten)>2)scrollPosition=viewport.scrollTop;scrollPosition+=Number(el('speed').value)*pace*dt/1000;viewport.scrollTop=scrollPosition;lastWritten=viewport.scrollTop;progress();if(now-statusAt>300){const rate=Math.round(Number(el('speed').value)*pace);state((pace>1.08?'Ускоряю':pace<.92?'Замедляю':'Держу скорость')+' · '+rate+' px/с');statusAt=now;}
    if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){pauseMovement();state('Конец сценария · микрофон включён');return;}hybridFrame=requestAnimationFrame(step);
   }
   hybridFrame=requestAnimationFrame(step);
  }
- window.teleVoice={stop,connect,pause:pauseMovement,modeChanged(){el('voiceMode').value=readMode;describeMode();buttons();},toggleMotion(){moving?pauseMovement():resumeMovement();},get busy(){return busy;},get connected(){return connected;},get moving(){return moving;},scriptChanged(){if(busy){pauseMovement();wrapWords();expected();}},layoutChanged(){haltMovement();lastMatch=0;if(busy)anchor();}};
+ window.teleVoice={stop,connect,microphoneHint,pause:pauseMovement,modeChanged(){el('voiceMode').value=readMode;describeMode();buttons();if(readMode==='speed'&&!busy)el('voiceState').hidden=true;},toggleMotion(){moving?pauseMovement():resumeMovement();},get busy(){return busy;},get connected(){return connected;},get moving(){return moving;},scriptChanged(){if(busy){pauseMovement();wrapWords();expected();}},layoutChanged(){haltMovement();lastMatch=0;if(busy)anchor();}};
  function wrapWords(){
   // Unwrap a previous session; keep original rich-text elements and whitespace.
   el('script').querySelectorAll('[data-voice-word]').forEach(s=>s.replaceWith(document.createTextNode(s.textContent)));
@@ -41,13 +44,13 @@
    fragment.append(text.slice(last));node.replaceWith(fragment);
   }
   compiled=TeleVoiceAlign.compile(words);
-  const marker=viewport.getBoundingClientRect().top+viewport.clientHeight*.28;
+  const marker=viewport.getBoundingClientRect().top+readingInset();
   cursor=spans.findIndex(s=>s.getBoundingClientRect().bottom>=marker);if(cursor<0)cursor=0;
  }
  function haltMovement(){cancelAnimationFrame(scrollFrame);scrollFrame=0;targetScroll=viewport.scrollTop;clearTimeout(watchdog);}
  function follow(){
-  cancelAnimationFrame(scrollFrame);let last=performance.now();
-  function step(now){if(!busy||!moving)return;const delta=targetScroll-viewport.scrollTop;if(delta<=.5){scrollFrame=0;return;}viewport.scrollTop+=delta*(1-Math.exp(-(now-last)/120));last=now;progress();scrollFrame=requestAnimationFrame(step);}
+  cancelAnimationFrame(scrollFrame);let last=performance.now(),smoothPosition=viewport.scrollTop;
+  function step(now){if(!busy||!moving)return;const delta=targetScroll-viewport.scrollTop;if(delta<=.75){viewport.scrollTop=targetScroll;progress();scrollFrame=0;return;}const dt=Math.min(64,now-last);const velocity=Math.max(24,Math.min(900,delta/0.28));smoothPosition=Math.min(targetScroll,smoothPosition+velocity*dt/1000);viewport.scrollTop=smoothPosition;last=now;progress();scrollFrame=requestAnimationFrame(step);}
   scrollFrame=requestAnimationFrame(step);
  }
  function expected(){el('voiceExpected').textContent=bindRussian('Далее: '+words.slice(cursor,cursor+7).join(' '));}
@@ -60,13 +63,9 @@
   if(normalized&&normalized===lastAccepted)return;
   if(normalized===previousHeard&&!isFinal)return;previousHeard=normalized;
   const matched=TeleVoiceAlign.match(compiled,text,cursor,{final:isFinal,allowShortPartial:true});
-  if(!matched){haltMovement();expected();if(!isHybrid())state(text?'По голосу · ждём совпадение':'По голосу · слушаю');return;}
+  if(!matched){if(normalized&&!isHybrid())haltMovement();expected();if(!isHybrid()&&!scrollFrame)state(text?'По голосу · ждём совпадение':'По голосу · слушаю');return;}
   cursor=matched.end;lastAccepted=normalized;expected();
-  const next=spans[Math.min(cursor,spans.length-1)],rect=viewport.getBoundingClientRect();
-  const delta=next.getBoundingClientRect().top-rect.top-viewport.clientHeight*.28;
-  targetScroll=Math.min(viewport.scrollHeight-viewport.clientHeight,viewport.scrollTop+Math.max(0,delta));
-  readingTarget=Math.max(0,Math.min(viewport.scrollHeight-viewport.clientHeight,viewport.scrollTop+delta));lastMatch=performance.now();if(!isHybrid())follow();if(!isHybrid())state('По голосу · читаем');clearTimeout(watchdog);
-  if(!isHybrid())watchdog=setTimeout(()=>{haltMovement();state('По голосу · ждём продолжение');},1100);
+  readingTarget=wordPosition(cursor);targetScroll=Math.max(viewport.scrollTop,readingTarget);lastMatch=performance.now();if(!isHybrid())follow();if(!isHybrid())state('По голосу · читаем');clearTimeout(watchdog);
   if(cursor>=words.length){pauseMovement();state('Сценарий прочитан · микрофон включён');notice('Сценарий прочитан. Можно выбрать следующий без отключения микрофона.');}
  }
  function fail(text){pause();stop(true);notice(text,true);}
