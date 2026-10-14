@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#191b1d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Телесуфлёр"><link rel="apple-touch-icon" href="icon-180.png"><link rel="manifest" href="manifest.webmanifest"><title>Телесуфлёр</title><link rel="stylesheet" href="style.css?v=voice-follow-20261014"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#191b1d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Телесуфлёр"><link rel="apple-touch-icon" href="icon-180.png"><link rel="manifest" href="manifest.webmanifest"><title>Телесуфлёр</title><link rel="stylesheet" href="style.css?v=voice-labels-20261014"></head>
 <body>
 <header class="header"><div class="brand">Телесуфлёр <span>Локально · без облака</span></div><div class="header-actions"><button id="openVoice">Голос</button><button id="openLibrary">Сценарии</button></div></header>
 <main id="reader" class="reader">
@@ -9,7 +9,7 @@
  <div id="empty" class="empty"><h1>Текст перед глазами</h1><p>Выберите сценарий или вставьте свой текст.</p><button id="emptyOpen" class="primary">Открыть сценарии</button></div>
  <div class="reader-meta"><span id="currentTitle">Сценарий не выбран</span><span id="progress">0%</span></div>
 </main>
-<div id="voiceState" class="voice-state" role="status" hidden><span id="voiceLabel"></span><span id="voiceTranscript"></span><meter id="voiceMeter" min="0" max="1" value="0" aria-label="Уровень микрофона"></meter></div>
+<div id="voiceState" class="voice-state" role="status" hidden><span id="voiceLabel"></span><span id="voiceTranscript"></span><span id="voiceExpected"></span><meter id="voiceMeter" min="0" max="1" value="0" aria-label="Уровень микрофона"></meter></div>
 <footer class="controls">
  <div class="transport"><button id="reset" aria-label="Вернуться к началу" title="К началу">↥</button><button id="play" class="primary" disabled title="Обычная прокрутка с заданной скоростью">По скорости</button></div>
  <label class="setting" for="speed">Скорость <output id="speedValue">40 px/с</output><input id="speed" type="range" min="5" max="160" step="5" value="40"></label>
@@ -25,4 +25,4 @@
  <p id="status" class="status" role="status" aria-live="polite"></p></div>
 </dialog>
 <dialog id="voiceDialog"><div class="dialog-head"><div><span class="eyebrow">НА ЭТОМ УСТРОЙСТВЕ</span><h1>Голосовая прокрутка</h1></div><button id="closeVoice" class="close-dialog" aria-label="Закрыть голосовые настройки"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 14 14M19 5 5 19"/></svg></button></div><div class="library-body voice-body"><p>Режим «По голосу» подстраивается под ваше чтение: быстрее читаете — текст догоняет, медленнее — замедляется. Молчание или отступление от сценария останавливают движение.</p><h2>1. Русская модель</h2><p>Один раз загрузите 46 МБ через интернет. Модель остаётся на устройстве; после загрузки сеть и MacBook не нужны.</p><button id="voiceDownload" class="primary">Загрузить модель</button><h2>2. Микрофон</h2><p>Выберите сценарий, расположите нужную строку у стрелки и разрешите доступ к микрофону. Аудио обрабатывается на устройстве и не отправляется на сервер.</p><button id="voiceStart" class="primary" disabled>Читать по голосу</button><p class="muted">Под текстом видны уровень микрофона и распознанные слова. «По скорости» запускает обычную прокрутку с ползунком скорости.</p><p class="muted">Тестовый режим. Скорость и точность на XR ещё предстоит проверить. Кнопка «Пауза» или касание текста выключают микрофон. При ошибках можно читать с обычной прокруткой.</p><p id="voiceMessage" class="status" role="status" aria-live="polite"></p><p id="voiceHeard" class="muted"></p></div></dialog>
-<script src="vendor/jszip.min.js"></script><script src="docx.js"></script><script src="voice-align.js?v=voice-follow-20261014"></script><script src="app.js?v=voice-follow-20261014"></script><script src="voice.js?v=voice-follow-20261014"></script></body></html>
+<script src="vendor/jszip.min.js"></script><script src="docx.js"></script><script src="voice-align.js?v=voice-labels-20261014"></script><script src="app.js?v=voice-labels-20261014"></script><script src="voice.js?v=voice-labels-20261014"></script></body></html>

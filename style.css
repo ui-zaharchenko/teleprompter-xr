@@ -28,3 +28,5 @@ dialog[open]{display:flex;flex-direction:column}
 .voice-state{position:static;flex-shrink:0;display:grid;grid-template-columns:1fr 80px;gap:3px 12px;width:100%;max-width:none;border-radius:0;padding:6px max(20px,env(safe-area-inset-left));background:#262c2f}.voice-state #voiceTranscript{grid-row:2;grid-column:1/-1;margin:0}.voice-state meter{grid-row:1;grid-column:2;align-self:center;margin:0;height:8px}.voice-state.error #voiceTranscript{white-space:normal}
 
 .voice-state meter::-webkit-meter-bar{background:#485257;border:0;border-radius:4px}.voice-state meter::-webkit-meter-optimum-value{background:#93a2ab}.voice-state meter::-moz-meter-bar{background:#93a2ab}
+
+.voice-state #voiceExpected{grid-row:3;grid-column:1/-1;color:#b8c2c7;font-size:12px}
