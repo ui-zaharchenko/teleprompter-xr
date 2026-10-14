@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 const store = {get(k){try{return localStorage.getItem(k);}catch{return null;}},set(k,v){try{localStorage.setItem(k,v);return true;}catch{return false;}},remove(k){try{localStorage.removeItem(k);}catch{}}};
 let key = store.get('tp-key') || '', scripts = [], active = null, running = false, frame = 0, lastTime = 0, position = 0, wakeLock = null;
 let macTransfer=true;
+let readMode=store.get('tp-read-mode')||store.get('tp-voice-mode')||'hybrid';
+if(!['speed','voice','hybrid'].includes(readMode))readMode='hybrid';
 const viewport = $('viewport');
 function message(text,error=false){$('status').textContent=bindRussian(text);$('status').classList.toggle('error',error);}
 async function api(path, options={}) {
@@ -19,13 +21,16 @@ function editorData(){const blocks=$('text').classList.contains('formatted')?rea
 function select(item){pause();active=item;if(item.blocks)renderBlocks($('script'),item.blocks,true);else{$('script').classList.remove('formatted');$('script').textContent=bindRussian(item.text);}$('empty').hidden=true;$('play').disabled=false;$('currentTitle').textContent=item.title;$('title').value=item.title;setEditor(item);viewport.scrollTop=0;position=0;window.teleVoice?.scriptChanged();store.set('tp-active',JSON.stringify(item));list();progress();}
 async function refresh(){if(!macTransfer){list();message('Локальная библиотека готова.');return true;}try{const remote=await api('/api/scripts');const merged=new Map(scripts.map(item=>[item.id,item]));for(const item of remote)merged.set(item.id,item);scripts=[...merged.values()].sort((a,b)=>b.updatedAt-a.updatedAt);persistScripts();$('connectForm').hidden=true;list();message('Тексты с Mac сохранены на этом устройстве.');return true;}catch(e){$('connectForm').hidden=e.status!==401;list();message(e.status===401?'Введите код с Mac, чтобы получить его сценарии. Свой текст можно добавить сразу.':'Читаем локальные копии. Mac сейчас недоступен.',false);return false;}}
 function openLibrary(){pause();$('library').showModal();refresh();}
-function progress(){const max=viewport.scrollHeight-viewport.clientHeight;$('progress').textContent=(max>0?Math.round(viewport.scrollTop/max*100):0)+'%';}
+function progress(){const max=viewport.scrollHeight-viewport.clientHeight;const percent=max>0?Math.max(0,Math.min(100,Math.round(viewport.scrollTop/max*100))):0;$('progress').textContent=percent+'%';$('progressPercent').textContent=percent+'%';$('progressFill').style.width=percent+'%';$('readingProgress').setAttribute('aria-valuenow',String(percent));}
 async function keepAwake(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
 function pause(){window.teleVoice?.pause();running=false;cancelAnimationFrame(frame);$('play').textContent='Старт';if(wakeLock){wakeLock.release().catch(()=>{});wakeLock=null;}}
 function tick(time){if(!running)return;if(lastTime){position+=Math.min(time-lastTime,100)/1000*Number($('speed').value);viewport.scrollTop=position;progress();if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){pause();$('play').textContent='Готово';return;}}lastTime=time;frame=requestAnimationFrame(tick);}
-function play(){if(window.teleVoice?.busy){window.teleVoice.toggleMotion();return;}if(!active)return;if(running){pause();return;}if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){viewport.scrollTop=0;}position=viewport.scrollTop;running=true;lastTime=0;$('play').textContent='Пауза';keepAwake();frame=requestAnimationFrame(tick);}
+function play(){if(!active)return;if(running){pause();return;}if(readMode!=='speed'){if(!window.teleVoice?.busy){window.teleVoice?.connect();return;}window.teleVoice.toggleMotion();return;}if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){viewport.scrollTop=0;}position=viewport.scrollTop;running=true;lastTime=0;$('play').textContent='Пауза';keepAwake();frame=requestAnimationFrame(tick);}
 $('play').onclick=play;$('reset').onclick=()=>{pause();viewport.scrollTop=0;position=0;progress();};
-for(const event of ['touchstart','wheel','pointerdown'])viewport.addEventListener(event,()=>{if(running||window.teleVoice?.busy)pause();},{passive:true});
+let revealUntil=0;
+viewport.addEventListener('pointerdown',()=>{if(document.body.classList.contains('immersive')){revealUntil=performance.now()+500;setImmersive(false);return;}if(performance.now()>revealUntil&&(running||window.teleVoice?.moving))pause();},{passive:true});
+viewport.addEventListener('touchstart',()=>{if(performance.now()>revealUntil&&!document.body.classList.contains('immersive')&&(running||window.teleVoice?.moving))pause();},{passive:true});
+viewport.addEventListener('wheel',()=>{if(running||window.teleVoice?.moving)pause();},{passive:true});
 viewport.addEventListener('scroll',()=>{if(!running)position=viewport.scrollTop;progress();});
 $('openLibrary').onclick=openLibrary;$('emptyOpen').onclick=openLibrary;$('closeLibrary').onclick=()=>$('library').close();$('refresh').onclick=refresh;
 $('connectForm').onsubmit=async e=>{e.preventDefault();const pin=$('accessKey').value.trim();if(!/^\d{6}$/.test(pin)){message('Введите шесть цифр с Mac.',true);return;}try{const connection=await api('/api/pair',{method:'POST',body:JSON.stringify({pin})});key=connection.key;store.set('tp-key',key);if(await refresh()){if(!active&&scripts[0])select(scripts[0]);}}catch(e){message(e.message,true);}};
@@ -42,8 +47,11 @@ $('fullscreen').onclick=async()=>{if(document.body.classList.contains('immersive
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)setImmersive(false);});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();window.teleVoice?.stop(true);}});
 document.addEventListener('keydown',e=>{if($('library').open||$('voiceDialog').open||(/INPUT|TEXTAREA/.test(e.target.tagName)||e.target.isContentEditable))return;if(e.code==='Space'){e.preventDefault();play();}if(e.key==='Escape'){setImmersive(false);pause();}if(['ArrowDown','ArrowUp','PageDown','PageUp','Home','End'].includes(e.key))pause();});
-window.addEventListener('resize',()=>{if(window.teleVoice?.busy)window.teleVoice.layoutChanged();else pause();progress();});
+window.addEventListener('resize',()=>{window.teleVoice?.layoutChanged();position=viewport.scrollTop;progress();});
 window.addEventListener('orientationchange',()=>window.teleVoice?.layoutChanged());
+function setReadMode(mode){pause();readMode=mode;store.set('tp-read-mode',mode);store.set('tp-voice-mode',mode);for(const b of document.querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));window.teleVoice?.modeChanged();}
+for(const b of document.querySelectorAll('[data-mode]'))b.onclick=()=>setReadMode(b.dataset.mode);
+for(const b of document.querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===readMode));
 async function setupOffline(){
  if(!window.isSecureContext||!('serviceWorker' in navigator)){$('offlineState').textContent=bindRussian('На этом HTTP-адресе автономный запуск на iPhone ещё недоступен. Нужен HTTPS-адрес. Пока сервер нужен для открытия страницы; уже открытый текст можно читать без Mac.');return;}
  try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready;$('offlineState').textContent=bindRussian('Приложение сохранено для запуска без сети. На iPhone автономность нужно проверить после добавления на экран Домой.');}catch{$('offlineState').textContent=bindRussian('Не удалось сохранить приложение для автономного запуска. Откройте его с сетью и повторите попытку.');}

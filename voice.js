@@ -1,15 +1,15 @@
 'use strict';
 (()=>{
  const el=id=>document.getElementById(id),modelURL=new URL('models/ru-small-0.22.tar.gz',location.href).href,CACHE='tp-voice-ru-v1';
- let cached=false,downloading=false,generation=0,busy=false,model=null,recognizer=null,stream=null,context=null,source=null,processor=null,gain=null,watchdog=null,words=[],spans=[],cursor=0,loadingScript=null,cancelLoad=null,pendingAudio=0,audioQueue=[],sentAt=0,lastAudio=0,monitor=null,scrollFrame=0,targetScroll=0,previousHeard='',lastError='',compiled=null,lastAccepted='',moving=false,hybridFrame=0,readingTarget=0,lastMatch=0,pace=1,resumeAfterSettings=false;
+ let cached=false,downloading=false,generation=0,busy=false,model=null,recognizer=null,stream=null,context=null,source=null,processor=null,gain=null,watchdog=null,words=[],spans=[],cursor=0,loadingScript=null,cancelLoad=null,pendingAudio=0,audioQueue=[],sentAt=0,lastAudio=0,monitor=null,scrollFrame=0,targetScroll=0,previousHeard='',lastError='',compiled=null,lastAccepted='',moving=false,hybridFrame=0,readingTarget=0,lastMatch=0,pace=1,resumeAfterSettings=false,connected=false;
  const notice=(text,error=false)=>{el('voiceMessage').textContent=bindRussian(text);el('voiceMessage').classList.toggle('error',error);if(error){lastError=text;el('voiceState').hidden=false;el('voiceState').classList.add('error');state('Голос: ошибка · Настройки');el('voiceState').title=text;el('voiceTranscript').textContent=bindRussian(text);el('voiceExpected').textContent='';el('voiceTranscript').style.whiteSpace='normal';}};
  const state=text=>{el('voiceLabel').textContent=bindRussian(text);};
- const isHybrid=()=>el('voiceMode').value==='hybrid';
- function buttons(){el('voiceDownload').disabled=downloading||cached||!isSecureContext||!('caches' in window)||!('serviceWorker' in navigator);el('voiceDownload').textContent=cached?'Модель сохранена':downloading?'Загрузка…':'Загрузить модель';el('voiceStart').disabled=!cached||!active||busy||!isSecureContext||!navigator.mediaDevices?.getUserMedia;el('mic').setAttribute('aria-pressed',String(busy));el('mic').setAttribute('aria-label',busy?'Выключить микрофон':'Включить микрофон');el('mic').title=busy?'Выключить микрофон':'Включить голос';}
+ const isHybrid=()=>readMode==='hybrid';
+ function buttons(){el('voiceDownload').disabled=downloading||cached||!isSecureContext||!('caches' in window)||!('serviceWorker' in navigator);el('voiceDownload').textContent=cached?'Модель сохранена':downloading?'Загрузка…':'Загрузить модель';el('voiceStart').disabled=!cached||!active||busy||!isSecureContext||!navigator.mediaDevices?.getUserMedia;el('mic').setAttribute('aria-pressed',String(busy));el('mic').setAttribute('aria-label',busy?'Выключить микрофон':'Включить микрофон');el('mic').title=busy?'Выключить микрофон':'Включить голос';el('play').disabled=!active||(busy&&!connected&&readMode!=='speed');}
  async function checkCache(){try{cached=!!await (await caches.open(CACHE)).match(modelURL);}catch{cached=false;}buttons();}
  function stop(releaseModel=false){
   pauseMovement();
-  generation++;busy=false;pendingAudio=0;audioQueue=[];clearInterval(monitor);monitor=null;cancelAnimationFrame(scrollFrame);scrollFrame=0;cancelLoad?.();cancelLoad=null;clearTimeout(watchdog);watchdog=null;
+  generation++;busy=false;connected=false;pendingAudio=0;audioQueue=[];clearInterval(monitor);monitor=null;cancelAnimationFrame(scrollFrame);scrollFrame=0;cancelLoad?.();cancelLoad=null;clearTimeout(watchdog);watchdog=null;
   stream?.getTracks().forEach(t=>t.stop());stream=null;
   if(processor){processor.onaudioprocess=null;processor.disconnect();}processor=null;
   source?.disconnect();source=null;gain?.disconnect();gain=null;
@@ -18,18 +18,18 @@
   el('voiceState').hidden=true;el('openVoice').textContent='Настройки';el('play').textContent='Старт';buttons();
  }
  function pauseMovement(){moving=false;cancelAnimationFrame(hybridFrame);hybridFrame=0;haltMovement();el('play').textContent='Старт';if(busy)state('Микрофон включён · пауза');}
- function resumeMovement(){if(!busy)return;moving=true;anchor();lastMatch=0;pace=1;el('play').textContent='Пауза';state(isHybrid()?'Скорость + голос':'По голосу · слушаю');if(isHybrid())startHybrid();keepAwake();}
+ function resumeMovement(){if(!connected||readMode==='speed')return;moving=true;anchor();lastMatch=0;pace=1;el('play').textContent='Пауза';state(isHybrid()?'Скорость + голос':'По голосу · слушаю');if(isHybrid())startHybrid();keepAwake();}
  function anchor(){const mark=viewport.getBoundingClientRect().top+viewport.clientHeight*.28;cursor=spans.findIndex(s=>s.getBoundingClientRect().bottom>=mark);if(cursor<0)cursor=words.length;previousHeard='';lastAccepted='';expected();}
  function startHybrid(){
-  cancelAnimationFrame(hybridFrame);let previous=performance.now(),scrollPosition=viewport.scrollTop,lastWritten=viewport.scrollTop;
+  cancelAnimationFrame(hybridFrame);let previous=performance.now(),scrollPosition=viewport.scrollTop,lastWritten=viewport.scrollTop,statusAt=0;
   function step(now){if(!busy||!moving||!isHybrid())return;const dt=Math.min(100,now-previous);previous=now;
    const factor=lastMatch&&now-lastMatch<7000?Math.max(.15,Math.min(2.25,1+(readingTarget-viewport.scrollTop)/Math.max(60,viewport.clientHeight*.7))):1;
-   pace+=(factor-pace)*Math.min(1,dt/500);if(Math.abs(viewport.scrollTop-lastWritten)>2)scrollPosition=viewport.scrollTop;scrollPosition+=Number(el('speed').value)*pace*dt/1000;viewport.scrollTop=scrollPosition;lastWritten=viewport.scrollTop;progress();
+   pace+=(factor-pace)*Math.min(1,dt/500);if(Math.abs(viewport.scrollTop-lastWritten)>2)scrollPosition=viewport.scrollTop;scrollPosition+=Number(el('speed').value)*pace*dt/1000;viewport.scrollTop=scrollPosition;lastWritten=viewport.scrollTop;progress();if(now-statusAt>300){const rate=Math.round(Number(el('speed').value)*pace);state((pace>1.08?'Ускоряю':pace<.92?'Замедляю':'Держу скорость')+' · '+rate+' px/с');statusAt=now;}
    if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){pauseMovement();state('Конец сценария · микрофон включён');return;}hybridFrame=requestAnimationFrame(step);
   }
   hybridFrame=requestAnimationFrame(step);
  }
- window.teleVoice={stop,pause:pauseMovement,toggleMotion(){moving?pauseMovement():resumeMovement();},get busy(){return busy;},get moving(){return moving;},scriptChanged(){if(busy){pauseMovement();wrapWords();expected();}},layoutChanged(){haltMovement();lastMatch=0;if(busy)anchor();}};
+ window.teleVoice={stop,connect,pause:pauseMovement,modeChanged(){el('voiceMode').value=readMode;describeMode();buttons();},toggleMotion(){moving?pauseMovement():resumeMovement();},get busy(){return busy;},get connected(){return connected;},get moving(){return moving;},scriptChanged(){if(busy){pauseMovement();wrapWords();expected();}},layoutChanged(){haltMovement();lastMatch=0;if(busy)anchor();}};
  function wrapWords(){
   // Unwrap a previous session; keep original rich-text elements and whitespace.
   el('script').querySelectorAll('[data-voice-word]').forEach(s=>s.replaceWith(document.createTextNode(s.textContent)));
@@ -54,18 +54,18 @@
  function heard(text,isFinal=false){
   if(!busy)return;
   el('voiceHeard').textContent=bindRussian(text?'Услышано: '+text:'');
-  if(text)el('voiceTranscript').textContent=bindRussian('Услышано: '+text);if(!moving)return;
+  if(text)el('voiceTranscript').textContent=bindRussian('Услышано: '+text);if(!moving||readMode==='speed')return;
   const normalized=TeleVoiceAlign.tokens(text).join(' ');
   if(!normalized)lastAccepted='';
   if(normalized&&normalized===lastAccepted)return;
   if(normalized===previousHeard&&!isFinal)return;previousHeard=normalized;
   const matched=TeleVoiceAlign.match(compiled,text,cursor,{final:isFinal,allowShortPartial:true});
-  if(!matched){haltMovement();expected();state(isHybrid()?'Скорость + голос · по скорости':text?'По голосу · ждём совпадение':'По голосу · слушаю');return;}
+  if(!matched){haltMovement();expected();if(!isHybrid())state(text?'По голосу · ждём совпадение':'По голосу · слушаю');return;}
   cursor=matched.end;lastAccepted=normalized;expected();
   const next=spans[Math.min(cursor,spans.length-1)],rect=viewport.getBoundingClientRect();
   const delta=next.getBoundingClientRect().top-rect.top-viewport.clientHeight*.28;
   targetScroll=Math.min(viewport.scrollHeight-viewport.clientHeight,viewport.scrollTop+Math.max(0,delta));
-  readingTarget=Math.max(0,Math.min(viewport.scrollHeight-viewport.clientHeight,viewport.scrollTop+delta));lastMatch=performance.now();if(!isHybrid())follow();state(isHybrid()?'Скорость + голос · подстраиваюсь':'По голосу · читаем');clearTimeout(watchdog);
+  readingTarget=Math.max(0,Math.min(viewport.scrollHeight-viewport.clientHeight,viewport.scrollTop+delta));lastMatch=performance.now();if(!isHybrid())follow();if(!isHybrid())state('По голосу · читаем');clearTimeout(watchdog);
   if(!isHybrid())watchdog=setTimeout(()=>{haltMovement();state('По голосу · ждём продолжение');},1100);
   if(cursor>=words.length){pauseMovement();state('Сценарий прочитан · микрофон включён');notice('Сценарий прочитан. Можно выбрать следующий без отключения микрофона.');}
  }
@@ -98,7 +98,7 @@
   finally{downloading=false;buttons();}
  };
  async function connect(){
-  pause();stop();lastError='';previousHeard='';lastAccepted='';busy=true;const session=++generation;buttons();el('voiceState').classList.remove('error');el('voiceTranscript').style.whiteSpace='';el('voiceTranscript').textContent='';el('voiceMeter').value=0;notice('Подготавливаем распознавание…');
+  pause();stop();lastError='';previousHeard='';lastAccepted='';busy=true;const session=++generation;buttons();el('voiceState').classList.remove('error');el('voiceTranscript').style.whiteSpace='';el('voiceTranscript').textContent='';el('voiceMeter').value=0;notice('Подготавливаем распознавание…');el('voiceState').hidden=false;state('Подготавливаем микрофон…');
   let pendingModel=null;
   try{
    // Safari requires creating/resuming AudioContext inside the user's tap.
@@ -122,12 +122,12 @@
    };
    source.connect(processor);processor.connect(gain);gain.connect(context.destination);
    monitor=setInterval(()=>{if(session!==generation)return;if(context.state!=='running'||performance.now()-lastAudio>4000)fail('Не поступает звук от микрофона. Закройте другие приложения с микрофоном и повторите запуск.');else if(pendingAudio&&performance.now()-sentAt>10000)fail('Распознавание не отвечает. Повторите запуск или используйте режим «По скорости».');},1000);
-   el('voiceState').hidden=false;state('Микрофон включён; ждём речь');el('voiceTranscript').textContent='Читайте строку возле стрелки';expected();el('openVoice').textContent='Настройки';moving=true;el('play').textContent='Пауза';if(isHybrid())startHybrid();state(isHybrid()?'Скорость + голос':'По голосу · слушаю');buttons();keepAwake();el('voiceDialog').close();notice('Микрофон включён. Читайте выбранный сценарий.');
+   connected=true;el('voiceState').hidden=false;state('Микрофон включён; ждём речь');el('voiceTranscript').textContent='Читайте строку возле стрелки';expected();el('openVoice').textContent='Настройки';moving=false;el('play').textContent=running?'Пауза':'Старт';state(running?'Микрофон подключён · по скорости':'Микрофон подключён · нажмите Старт');buttons();resumeAfterSettings=false;el('voiceDialog').close();notice('Микрофон включён. Читайте выбранный сценарий.');
   }catch(e){if(session===generation){fail(e.name==='NotAllowedError'?'Доступ к микрофону запрещён. Разрешите его в настройках Safari и повторите запуск.':e.message||'Распознавание не запустилось.');}}
  }
  el('voiceStart').onclick=connect;
- el('mic').onclick=async()=>{if(busy){const continueTimed=moving&&isHybrid();stop();if(continueTimed)play();return;}await checkCache();if(!cached||!active){el('openVoice').click();return;}connect();};
- el('voiceMode').value=store.get('tp-voice-mode')||'hybrid';
- el('voiceMode').onchange=()=>{store.set('tp-voice-mode',el('voiceMode').value);el('modeDescription').textContent=bindRussian(isHybrid()?'Текст движется с заданной скоростью. Голос ускоряет или замедляет движение. Во время молчания прокрутка продолжается; кнопка «Пауза» останавливает её.':'Текст движется только по подтверждённым словам. Молчание или отступление останавливают движение. Микрофон остаётся включённым для продолжения.');if(busy&&moving)resumeMovement();};el('voiceMode').onchange();
+ el('mic').onclick=async()=>{if(busy){if(readMode!=='speed')pause();const wasRunning=running;stop();if(wasRunning)el('play').textContent='Пауза';return;}await checkCache();if(!cached||!active){el('openVoice').click();return;}connect();};
+ function describeMode(){el('modeDescription').textContent=bindRussian(readMode==='speed'?'Режим «По скорости» движется с заданной скоростью без голосовой коррекции. Микрофон можно оставить подключённым для переключения режима.':isHybrid()?'Текст движется с заданной скоростью. Голос ускоряет или замедляет движение. Во время молчания прокрутка продолжается; кнопка «Пауза» останавливает её.':'Текст движется только по подтверждённым словам. Молчание или отступление останавливают движение. Микрофон остаётся включённым для продолжения.');}
+ el('voiceMode').value=readMode;el('voiceMode').onchange=()=>setReadMode(el('voiceMode').value);describeMode();
  checkCache();
 })();
