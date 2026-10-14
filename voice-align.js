@@ -30,9 +30,9 @@
   if(!heard.length)return null;
   let cursor=0;while(cursor<words.length&&source.ends[cursor]<=rawCursor)cursor++;
   // A completed one/two-word heading is safe only right beside the cursor.
-  if(options.final&&heard.length<=2){
+  if((options.final||options.allowShortPartial)&&heard.length<=2){
    const distinctive=heard.some(word=>/^[а-яa-z]{5,}$/.test(word));
-   if(distinctive)for(let start=cursor;start<=Math.min(words.length-heard.length,cursor+2);start++){
+   if(distinctive)for(let start=cursor;start<=Math.min(words.length-heard.length,cursor+(options.final?2:0));start++){
     if(heard.every((word,i)=>word===words[start+i]))return {start:source.starts[start],end:source.ends[start+heard.length-1]};
    }
   }
