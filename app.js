@@ -21,7 +21,7 @@ async function refresh(){if(!macTransfer){list();message('Локальная б�
 function openLibrary(){pause();$('library').showModal();refresh();}
 function progress(){const max=viewport.scrollHeight-viewport.clientHeight;$('progress').textContent=(max>0?Math.round(viewport.scrollTop/max*100):0)+'%';}
 async function keepAwake(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
-function pause(){window.teleVoice?.stop();running=false;cancelAnimationFrame(frame);$('play').textContent='Старт';if(wakeLock){wakeLock.release().catch(()=>{});wakeLock=null;}}
+function pause(){window.teleVoice?.stop();running=false;cancelAnimationFrame(frame);$('play').textContent='По скорости';if(wakeLock){wakeLock.release().catch(()=>{});wakeLock=null;}}
 function tick(time){if(!running)return;if(lastTime){position+=Math.min(time-lastTime,100)/1000*Number($('speed').value);viewport.scrollTop=position;progress();if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){pause();$('play').textContent='Готово';return;}}lastTime=time;frame=requestAnimationFrame(tick);}
 function play(){if(window.teleVoice?.busy){pause();return;}if(!active)return;if(running){pause();return;}if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){viewport.scrollTop=0;}position=viewport.scrollTop;running=true;lastTime=0;$('play').textContent='Пауза';keepAwake();frame=requestAnimationFrame(tick);}
 $('play').onclick=play;$('reset').onclick=()=>{pause();viewport.scrollTop=0;position=0;progress();};
@@ -42,7 +42,8 @@ $('fullscreen').onclick=async()=>{if(document.body.classList.contains('immersive
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)setImmersive(false);});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 document.addEventListener('keydown',e=>{if($('library').open||$('voiceDialog').open||(/INPUT|TEXTAREA/.test(e.target.tagName)||e.target.isContentEditable))return;if(e.code==='Space'){e.preventDefault();play();}if(e.key==='Escape'){setImmersive(false);pause();}if(['ArrowDown','ArrowUp','PageDown','PageUp','Home','End'].includes(e.key))pause();});
-window.addEventListener('resize',()=>{pause();progress();});
+window.addEventListener('resize',()=>{if(window.teleVoice?.busy)window.teleVoice.layoutChanged();else pause();progress();});
+window.addEventListener('orientationchange',()=>pause());
 async function setupOffline(){
  if(!window.isSecureContext||!('serviceWorker' in navigator)){$('offlineState').textContent=bindRussian('На этом HTTP-адресе автономный запуск на iPhone ещё недоступен. Нужен HTTPS-адрес. Пока сервер нужен для открытия страницы; уже открытый текст можно читать без Mac.');return;}
  try{await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready;$('offlineState').textContent=bindRussian('Приложение сохранено для запуска без сети. На iPhone автономность нужно проверить после добавления на экран Домой.');}catch{$('offlineState').textContent=bindRussian('Не удалось сохранить приложение для автономного запуска. Откройте его с сетью и повторите попытку.');}
