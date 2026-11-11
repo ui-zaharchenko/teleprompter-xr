@@ -39,3 +39,21 @@ dialog[open]{display:flex;flex-direction:column}
 .reader .script{padding-top:20px}.reading-mark{top:20px}.reader:before{height:12px}
 
 .voice-state.mic-required{background:#522b2f;color:#ffe1e1}.voice-state.mic-required #voiceLabel{font-weight:600}
+
+/* Remote setup reuses the existing light dialog, type, spacing and button roles. */
+#remoteDialog{width:min(700px,calc(100% - 32px))}
+#remoteDialog h1{font-size:28px}
+.remote-body{font-size:16px;line-height:1.6;overflow-wrap:anywhere}
+.remote-body h2{margin:28px 0 12px}.remote-body h2:first-child{margin-top:0}
+.remote-body p{margin:0 0 16px}.remote-body .muted{font-size:14px}
+.remote-enable{display:flex;align-items:center;gap:12px;min-height:44px;margin:20px 0 12px;cursor:pointer}
+.remote-enable input{width:22px;height:22px;accent-color:var(--accent);flex-shrink:0}
+.remote-device{font-size:14px;color:var(--muted)}.remote-signal{font-size:14px;font-weight:500}
+.remote-bindings{display:grid;gap:0}.remote-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.remote-row span{display:block}.remote-row small{display:block;font-size:13px;line-height:1.5;color:var(--muted);margin-top:4px}
+.remote-row button{min-width:110px;white-space:normal}.remote-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.remote-actions button{white-space:normal;flex:1}
+.remote-help{margin-top:24px;font-size:14px}.remote-help summary{cursor:pointer;min-height:44px}.remote-help p{margin-top:12px}
+.close-dialog:focus-visible,#closeLibrary:focus-visible{outline:none;background:#dbe2e6;color:#273e4a;box-shadow:none}
+.close-dialog:focus,#closeLibrary:focus{border:0;box-shadow:none}
+#openRemote{white-space:normal;text-align:left;width:100%;margin-bottom:4px}
+@media(max-width:430px){#remoteDialog h1{font-size:24px}.remote-body{font-size:14px}.remote-row button{min-width:100px;padding:10px 12px}}

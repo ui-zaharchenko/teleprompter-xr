@@ -1,7 +1,7 @@
 'use strict';
-const CACHE='teleprompter-shell-v13';
+const CACHE='teleprompter-shell-v14';
 const BASE=self.registration.scope;
-const SHELL=['./','style.css','app.js','voice.js','voice-align.js','vendor/vosk.js','vendor/vosk-worker.js','vendor/Vosk-LICENSE.txt','vendor/Vosk-NOTICE.txt','manifest.webmanifest','icon.svg','runtime.json','icon-180.png','icon-192.png','icon-512.png','docx.js','vendor/jszip.min.js','vendor/JSZip-LICENSE.txt'].map(path=>new URL(path,BASE).href);
+const SHELL=['./','style.css','app.js','remote.js','voice.js','voice-align.js','vendor/vosk.js','vendor/vosk-worker.js','vendor/Vosk-LICENSE.txt','vendor/Vosk-NOTICE.txt','manifest.webmanifest','icon.svg','runtime.json','icon-180.png','icon-192.png','icon-512.png','docx.js','vendor/jszip.min.js','vendor/JSZip-LICENSE.txt'].map(path=>new URL(path,BASE).href);
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('teleprompter-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{

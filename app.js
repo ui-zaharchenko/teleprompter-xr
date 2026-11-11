@@ -46,7 +46,8 @@ function setImmersive(on){document.body.classList.toggle('immersive',on);$('full
 $('fullscreen').onclick=async()=>{if(document.body.classList.contains('immersive')){if(document.fullscreenElement)await document.exitFullscreen();setImmersive(false);}else{setImmersive(true);try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch{}}};
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)setImmersive(false);});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();window.teleVoice?.stop(true);}});
-document.addEventListener('keydown',e=>{if($('library').open||$('voiceDialog').open||(/INPUT|TEXTAREA/.test(e.target.tagName)||e.target.isContentEditable))return;if(e.code==='Space'){e.preventDefault();play();}if(e.key==='Escape'){setImmersive(false);pause();}if(['ArrowDown','ArrowUp','PageDown','PageUp','Home','End'].includes(e.key))pause();});
+// Remote/keyboard commands are owned by remote.js. Escape always remains a safety pause.
+document.addEventListener('keydown',e=>{if(e.defaultPrevented||document.querySelector('dialog[open]')||e.target.closest('input,textarea,select,[contenteditable="true"]'))return;if(e.key==='Escape'){setImmersive(false);pause();}});
 window.addEventListener('resize',()=>{window.teleVoice?.layoutChanged();position=viewport.scrollTop;progress();});
 window.addEventListener('orientationchange',()=>window.teleVoice?.layoutChanged());
 function setReadMode(mode){pause();readMode=mode;store.set('tp-read-mode',mode);store.set('tp-voice-mode',mode);for(const b of document.querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));window.teleVoice?.modeChanged();if(mode!=='speed'&&!window.teleVoice?.busy)window.teleVoice?.microphoneHint();}
