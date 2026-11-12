@@ -26,6 +26,14 @@
  let bindings={...defaults},enabled=store.get('tp-remote-enabled')!=='false',learning=null,learnTimer=0;
  let padFrame=0,padStates=new Map(),lastDevices='',keyHeld=new Map(),capturedKeys=new Set();
  let suspended=false,skipNextPad=true,lastSignal='',lastSignalAt=0,lastCommandAt=-Infinity,keyboardNavigation=false;
+ const inputEvents=[];
+ function record(type,detail=''){
+  inputEvents.push({at:Math.round(performance.now()),type,detail,immersive:document.body.classList.contains('immersive'),speed:Number($('speed').value)});
+  if(inputEvents.length>40)inputEvents.shift();
+  if(dialog.open&&$('remoteTrace')?.open)renderTrace();
+ }
+ function eventText(item){return `${item.at} ms · ${item.type} ${item.detail} · ${item.immersive?'только текст':'панель'} · ${item.speed} px/с`;}
+ function renderTrace(){const list=$('remoteEvents');if(!list)return;list.replaceChildren();for(const item of inputEvents){const li=document.createElement('li');li.textContent=bindRussian(eventText(item));list.append(li);}}
  try{const saved=JSON.parse(store.get('tp-remote-bindings'));if(saved&&saved.version===1&&saved.bindings&&typeof saved.bindings==='object'){
   bindings=Object.fromEntries(Object.entries(saved.bindings).filter(([signal,action])=>/^(key:[\w-]+|pad:button:\d+|pad:axis:\d+:[+-])$/.test(signal)&&(actions[action]||['pageBack','pageForward','none'].includes(action))));
  }}catch{}
@@ -45,7 +53,7 @@
    const row=document.createElement('div');row.className='remote-row';
    const info=document.createElement('div'),name=document.createElement('span'),current=document.createElement('small');
    name.textContent=bindRussian(action.label);
-   const signals=Object.entries(bindings).filter(([,a])=>a===id).map(([s])=>label(s));
+   const signals=Object.entries(bindings).filter(([s,a])=>a===id&&effectiveAction(s)===id).map(([s])=>label(s));
    current.textContent=learning===id?'Нажмите кнопку пульта…':signals.length?signals.join(' · '):'Не назначено';
    info.append(name,current);
    const button=document.createElement('button');button.textContent=learning===id?'Отмена':'Назначить';button.dataset.action=id;
@@ -63,7 +71,7 @@
  function receive(signal,standard=true){
   const now=performance.now();
   if(signal.startsWith('key:'))$('remoteDevice').textContent='Браузер получает команды клавиатуры.';
-  if(signal!==lastSignal||now-lastSignalAt>500){const action=learning||(standard?bindings[signal]:null);$('remoteSignal').textContent=bindRussian('Последний сигнал: '+label(signal)+' · '+(actions[action]?.label||'действие не назначено'));lastSignal=signal;lastSignalAt=now;}
+  if(signal!==lastSignal||now-lastSignalAt>500){const action=learning||effectiveAction(signal,standard);$('remoteSignal').textContent=bindRussian('Последний сигнал: '+label(signal)+' · '+(actions[action]?.label||'действие не назначено'));lastSignal=signal;lastSignalAt=now;}
   if(learning){
    const action=learning,previous=bindings[signal];
    // Replace this action's complete mapping; do not guess A/B/X/Y on generic remotes.
@@ -71,18 +79,30 @@
    bindings[signal]=action;clearTimeout(learnTimer);learning=null;render();
    notice('Назначено: '+actions[action].label+(previous&&previous!==action?' · прежнее действие кнопки заменено.':'.'));save();return null;
   }
-  return standard?bindings[signal]:null;
+  return effectiveAction(signal,standard);
  }
  // Explicit learned mappings are allowed on non-standard pads, including default-numbered inputs.
  let learnedPads=new Set();
  try{const saved=JSON.parse(store.get('tp-remote-learned'));if(Array.isArray(saved))learnedPads=new Set(saved.filter(s=>typeof s==='string'&&s.startsWith('pad:')));}catch{}
  function rememberLearned(signal){learnedPads.add(signal);store.set('tp-remote-learned',JSON.stringify([...learnedPads]));}
  function customKeyboard(){return Object.entries(bindings).some(([signal,action])=>signal.startsWith('key:')&&defaults[signal]!==action);}
+ function effectiveAction(signal,allowed=true){
+  if(!allowed)return null;
+  const action=bindings[signal];
+  // Learning replaces the complete set. A complete factory pair for an unchosen panel,
+  // home or restart command must not act on extra signals from a trained keyboard remote.
+  if(['panels','home','restart'].includes(action)&&customKeyboard()){
+   const untouched=Object.entries(defaults).filter(([,a])=>a===action).every(([s])=>bindings[s]===action);
+   if(untouched)return null;
+  }
+  return action;
+ }
  function padAllowed(signal,pad){return learnedPads.has(signal)||(pad.mapping==='standard'&&!customKeyboard());}
  function blocked(){return document.hidden||suspended||!!document.querySelector('dialog[open]');}
  function adjust(id,delta){const input=$(id);input.value=String(Math.max(Number(input.min),Math.min(Number(input.max),Number(input.value)+delta)));input.dispatchEvent(new Event('input',{bubbles:true}));}
  function execute(action){
   if(!enabled||blocked()||!active||!action)return;
+  record('действие',action);
   if(action==='toggle'){play();return;}
   if(action==='back'||action==='forward'){scrollScriptLines(action==='back'?-1:1);return;}
   if(action==='home'||action==='restart'){
@@ -92,7 +112,7 @@
   }
   if(action==='slower'||action==='faster')adjust('speed',action==='slower'?-5:5);
   if(action==='smaller'||action==='larger')adjust('font',action==='smaller'?-2:2);
-  if(action==='panels')setImmersive(!document.body.classList.contains('immersive'));
+  if(action==='panels')setImmersive(!document.body.classList.contains('immersive'),'remote-panels');
  }
  function editable(target){return target instanceof Element&&!!target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])');}
  function signalFor(e){const code=(e.code!=='Unidentified'&&e.code)||({ ' ':'Space',MediaPlayPause:'MediaPlayPause' }[e.key])||e.key;return /^[\w-]+$/.test(code)?'key:'+code:null;}
@@ -108,7 +128,8 @@
    if(!learning){if(!e.repeat){$('remoteDevice').textContent='Браузер получает команды клавиатуры.';receive(signal);}return;}
   }else if(!enabled||(keyboardNavigation&&!immersive&&e.target.closest('button,a,summary')&&['Space','Enter'].includes(e.code)))return;
   const wasLearning=!!learning,action=receive(signal);
-  if(!wasLearning&&!action){if(customKeyboard()&&!e.repeat){keyHeld.clear();lastCommandAt=performance.now();}return;}
+  record('keydown',signal+(e.repeat?' repeat':'')+' → '+(action||'без действия'));
+  if(!wasLearning&&!action){if(bindings[signal]){e.preventDefault();e.stopImmediatePropagation();capturedKeys.add(signal);}if(customKeyboard()&&!e.repeat){keyHeld.clear();lastCommandAt=performance.now();}return;}
   e.preventDefault();e.stopImmediatePropagation();capturedKeys.add(signal);
   if(!wasLearning){lastCommandAt=performance.now();keyboardNavigation=false;}
   const now=performance.now(),held=keyHeld.get(signal);
@@ -117,15 +138,17 @@
   if(held)held.last=now;
   if(!wasLearning)execute(action);
  },true);
- document.addEventListener('keyup',e=>{const signal=signalFor(e);keyHeld.delete(signal);if(capturedKeys.delete(signal)){lastCommandAt=performance.now();e.preventDefault();e.stopImmediatePropagation();}},true);
+ document.addEventListener('keyup',e=>{const signal=signalFor(e);keyHeld.delete(signal);if(capturedKeys.delete(signal)){record('keyup',signal);lastCommandAt=performance.now();e.preventDefault();e.stopImmediatePropagation();}},true);
  // Some remotes also emit mouse compatibility events for the same physical press.
  // A finger/pen keeps the original tap-to-reveal behavior; a remote mouse echo does not.
  function isRemotePointer(at=performance.now()){return enabled&&lastCommandAt>=at-450;}
- window.teleRemote={isRemotePointer};
+ window.teleRemote={isRemotePointer,record,getEvents:()=>inputEvents.map(item=>({...item}))};
  document.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'||e.pointerType==='pen')keyboardNavigation=false;},true);
  for(const type of ['pointerdown','pointerup','mousedown','mouseup','click','auxclick'])document.addEventListener(type,e=>{
-  if(e.pointerType==='touch'||e.pointerType==='pen'||e.sourceCapabilities?.firesTouchEvents||blocked()||!e.target.closest('#reader,.controls'))return;
-  if(isRemotePointer()){e.preventDefault();e.stopImmediatePropagation();}
+  if(blocked()||!e.target.closest('#reader,.controls'))return;
+  record(type,e.pointerType||'mouse');
+  if(e.pointerType==='touch'||e.pointerType==='pen'||e.sourceCapabilities?.firesTouchEvents)return;
+  if(isRemotePointer()){record('подавлено',type);e.preventDefault();e.stopImmediatePropagation();}
  },true);
  // Pointer interaction returns commands to the reader; Tab navigation retains normal button activation.
  document.querySelector('.controls').addEventListener('click',e=>{if(e.detail>0&&e.target.closest('button'))viewport.focus({preventScroll:true});});
@@ -154,7 +177,7 @@
      if(capturing){held.suppressed=true;continue;}
      if(!held.suppressed&&action){lastCommandAt=time;keyboardNavigation=false;execute(action);}
     }else if(!held.suppressed&&time-held.start>=350&&time-held.last>=110){
-     held.last=time;const action=padAllowed(signal,pad)?bindings[signal]:null;
+     held.last=time;const action=effectiveAction(signal,padAllowed(signal,pad));
      if(actions[action]?.repeat){lastCommandAt=time;execute(action);}
     }
    }
@@ -175,6 +198,8 @@
  window.addEventListener('blur',()=>{suspended=true;pause();resetInput();if(learning)cancelLearning();cancelAnimationFrame(padFrame);padFrame=0;});
  window.addEventListener('focus',()=>{suspended=false;resetInput();startPoll();});
  document.addEventListener('visibilitychange',()=>{resetInput();if(document.hidden){if(learning)cancelLearning();cancelAnimationFrame(padFrame);padFrame=0;}else{suspended=false;startPoll();}});
+ $('remoteTrace')?.addEventListener('toggle',()=>{if($('remoteTrace').open)renderTrace();});
+ if($('copyRemoteEvents'))$('copyRemoteEvents').onclick=async()=>{try{await navigator.clipboard.writeText(inputEvents.map(eventText).join('\n'));$('remoteCopyStatus').textContent='События скопированы.';}catch{$('remoteCopyStatus').textContent=bindRussian('Не удалось скопировать автоматически. Можно выделить список ниже.');}};
  for(const node of dialog.querySelectorAll('p,h2,label,summary,.remote-actions button'))if(node.childElementCount===0)node.textContent=bindRussian(node.textContent);
  render();startPoll();
 })();
