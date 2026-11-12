@@ -23,14 +23,27 @@ async function refresh(){if(!macTransfer){list();message('Локальная б�
 function openLibrary(){pause();$('library').showModal();refresh();}
 function progress(){const max=viewport.scrollHeight-viewport.clientHeight;const percent=max>0?Math.max(0,Math.min(100,Math.round(viewport.scrollTop/max*100))):0;$('progress').textContent=percent+'%';$('progressPercent').textContent=percent+'%';$('progressFill').style.width=percent+'%';$('readingProgress').setAttribute('aria-valuenow',String(percent));}
 async function keepAwake(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
-function pause(){window.teleVoice?.pause();running=false;cancelAnimationFrame(frame);$('play').textContent='Старт';if(wakeLock){wakeLock.release().catch(()=>{});wakeLock=null;}}
+let manualFrame=0;
+function cancelManualScroll(){cancelAnimationFrame(manualFrame);manualFrame=0;position=viewport.scrollTop;}
+function pause(){cancelManualScroll();window.teleVoice?.pause();running=false;cancelAnimationFrame(frame);$('play').textContent='Старт';if(wakeLock){wakeLock.release().catch(()=>{});wakeLock=null;}}
+function scrollScriptLines(direction){
+ pause();
+ const style=getComputedStyle($('script')),line=parseFloat(style.lineHeight)||Number($('font').value)*1.5;
+ const from=viewport.scrollTop,target=Math.max(0,Math.min(viewport.scrollHeight-viewport.clientHeight,from+direction*line*2));
+ function finish(){manualFrame=0;position=viewport.scrollTop;window.teleVoice?.layoutChanged();progress();}
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches){viewport.scrollTop=target;finish();return;}
+ const start=performance.now();
+ function step(now){const t=Math.min(1,(now-start)/280);viewport.scrollTop=from+(target-from)*(1-Math.pow(1-t,3));position=viewport.scrollTop;progress();if(t<1)manualFrame=requestAnimationFrame(step);else finish();}
+ manualFrame=requestAnimationFrame(step);
+}
 function tick(time){if(!running)return;if(lastTime){position+=Math.min(time-lastTime,100)/1000*Number($('speed').value);viewport.scrollTop=position;progress();if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){pause();$('play').textContent='Готово';return;}}lastTime=time;frame=requestAnimationFrame(tick);}
-function play(){if(!active)return;if(running){pause();return;}if(readMode!=='speed'){if(!window.teleVoice?.connected){window.teleVoice?.microphoneHint();return;}window.teleVoice.toggleMotion();return;}if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){viewport.scrollTop=0;}position=viewport.scrollTop;running=true;lastTime=0;$('play').textContent='Пауза';keepAwake();frame=requestAnimationFrame(tick);}
+function play(){if(!active)return;cancelManualScroll();if(running){pause();return;}if(readMode!=='speed'){if(!window.teleVoice?.connected){window.teleVoice?.microphoneHint();return;}window.teleVoice.toggleMotion();return;}if(viewport.scrollTop>=viewport.scrollHeight-viewport.clientHeight-1){viewport.scrollTop=0;}position=viewport.scrollTop;running=true;lastTime=0;$('play').textContent='Пауза';keepAwake();frame=requestAnimationFrame(tick);}
 $('play').onclick=play;$('reset').onclick=()=>{pause();viewport.scrollTop=0;position=0;progress();};
 let revealUntil=0;
-viewport.addEventListener('pointerdown',()=>{if(document.body.classList.contains('immersive')){revealUntil=performance.now()+500;setImmersive(false);return;}if(performance.now()>revealUntil&&(running||window.teleVoice?.moving))pause();},{passive:true});
-viewport.addEventListener('touchstart',()=>{if(performance.now()>revealUntil&&!document.body.classList.contains('immersive')&&(running||window.teleVoice?.moving))pause();},{passive:true});
-viewport.addEventListener('wheel',()=>{if(running||window.teleVoice?.moving)pause();},{passive:true});
+function readerPress(){if(document.body.classList.contains('immersive')){revealUntil=performance.now()+500;setImmersive(false);return;}if(performance.now()>revealUntil&&(running||manualFrame||window.teleVoice?.moving))pause();}
+viewport.addEventListener('pointerdown',e=>{if(e.defaultPrevented)return;if(e.pointerType==='touch'||e.pointerType==='pen'){readerPress();return;}const at=performance.now();setTimeout(()=>{if(!window.teleRemote?.isRemotePointer(at))readerPress();},120);},{passive:true});
+viewport.addEventListener('touchstart',()=>{if(performance.now()>revealUntil&&!document.body.classList.contains('immersive')&&(running||manualFrame||window.teleVoice?.moving))pause();},{passive:true});
+viewport.addEventListener('wheel',()=>{if(running||manualFrame||window.teleVoice?.moving)pause();},{passive:true});
 viewport.addEventListener('scroll',()=>{if(!running)position=viewport.scrollTop;progress();});
 $('openLibrary').onclick=openLibrary;$('emptyOpen').onclick=openLibrary;$('closeLibrary').onclick=()=>$('library').close();$('refresh').onclick=refresh;
 $('connectForm').onsubmit=async e=>{e.preventDefault();const pin=$('accessKey').value.trim();if(!/^\d{6}$/.test(pin)){message('Введите шесть цифр с Mac.',true);return;}try{const connection=await api('/api/pair',{method:'POST',body:JSON.stringify({pin})});key=connection.key;store.set('tp-key',key);if(await refresh()){if(!active&&scripts[0])select(scripts[0]);}}catch(e){message(e.message,true);}};
@@ -40,15 +53,15 @@ $('text').addEventListener('paste',e=>{e.preventDefault();const html=e.clipboard
 $('file').onchange=async()=>{const file=$('file').files[0];if(!file)return;const extension=file.name.split('.').pop().toLowerCase();if(extension==='doc'){message('Старый Word .doc нужно пересохранить в .docx.',true);$('file').value='';return;}if(!['txt','docx'].includes(extension)){message('Выберите TXT или Word .docx.',true);$('file').value='';return;}if(file.size>10_000_000){message('Выберите файл до 10 МБ.',true);$('file').value='';return;}$('save').disabled=true;try{let data;if(extension==='docx'){data=await importWord(await file.arrayBuffer());renderBlocks($('text'),data.blocks);}else{const text=await file.text();if(text.includes('\ufffd'))throw new Error('TXT должен быть в кодировке UTF-8.');data={text:text.replace(/^\uFEFF/,''),blocks:null};setEditor(data);}$('title').value=file.name.replace(/\.(txt|docx)$/i,'');store.set('tp-draft',JSON.stringify({title:$('title').value,...editorData()}));message('Файл загружен. '+(data.warnings||[]).join(' ')+' Проверьте текст и нажмите «Сохранить и читать».');}catch(e){message(e.message||'Не удалось прочитать файл.',true);}finally{$('file').value='';$('save').disabled=false;}};
 
 function settings(){document.documentElement.style.setProperty('--font',$('font').value+'px');$('fontValue').textContent=$('font').value+' px';$('speedValue').textContent=$('speed').value+' px/с';store.set('tp-settings',JSON.stringify({font:$('font').value,speed:$('speed').value,mirror:$('mirror').getAttribute('aria-pressed')==='true'}));}
-$('font').oninput=()=>{settings();window.teleVoice?.layoutChanged();progress();};$('speed').oninput=settings;
+$('font').oninput=()=>{cancelManualScroll();settings();window.teleVoice?.layoutChanged();progress();};$('speed').oninput=settings;
 $('mirror').onclick=()=>{const enabled=$('mirror').getAttribute('aria-pressed')!=='true';$('mirror').setAttribute('aria-pressed',String(enabled));$('script').classList.toggle('mirrored',enabled);settings();};
-function setImmersive(on){document.body.classList.toggle('immersive',on);$('fullscreen').querySelector('span').textContent=on?'Вернуть панель':'На весь экран';$('fullscreen').setAttribute('aria-label',on?'Вернуть панель':'На весь экран');$('fullscreen').setAttribute('aria-pressed',String(on));}
+function setImmersive(on){document.body.classList.toggle('immersive',on);$('fullscreen').querySelector('span').textContent=on?'Вернуть панель':'На весь экран';$('fullscreen').setAttribute('aria-label',on?'Вернуть панель':'На весь экран');$('fullscreen').setAttribute('aria-pressed',String(on));if(on)viewport.focus({preventScroll:true});}
 $('fullscreen').onclick=async()=>{if(document.body.classList.contains('immersive')){if(document.fullscreenElement)await document.exitFullscreen();setImmersive(false);}else{setImmersive(true);try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch{}}};
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)setImmersive(false);});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();window.teleVoice?.stop(true);}});
 // Remote/keyboard commands are owned by remote.js. Escape always remains a safety pause.
 document.addEventListener('keydown',e=>{if(e.defaultPrevented||document.querySelector('dialog[open]')||e.target.closest('input,textarea,select,[contenteditable="true"]'))return;if(e.key==='Escape'){setImmersive(false);pause();}});
-window.addEventListener('resize',()=>{window.teleVoice?.layoutChanged();position=viewport.scrollTop;progress();});
+window.addEventListener('resize',()=>{cancelManualScroll();window.teleVoice?.layoutChanged();position=viewport.scrollTop;progress();});
 window.addEventListener('orientationchange',()=>window.teleVoice?.layoutChanged());
 function setReadMode(mode){pause();readMode=mode;store.set('tp-read-mode',mode);store.set('tp-voice-mode',mode);for(const b of document.querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));window.teleVoice?.modeChanged();if(mode!=='speed'&&!window.teleVoice?.busy)window.teleVoice?.microphoneHint();}
 for(const b of document.querySelectorAll('[data-mode]'))b.onclick=()=>setReadMode(b.dataset.mode);

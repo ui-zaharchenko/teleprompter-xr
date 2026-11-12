@@ -4,8 +4,8 @@
  const dialog=$('remoteDialog');
  const actions={
   toggle:{label:'Старт / пауза'},
-  back:{label:'Текст назад',repeat:true},
-  forward:{label:'Текст вперёд',repeat:true},
+  back:{label:'Текст назад'},
+  forward:{label:'Текст вперёд'},
   slower:{label:'Медленнее',repeat:true},
   faster:{label:'Быстрее',repeat:true},
   home:{label:'К началу · пауза'},
@@ -16,7 +16,7 @@
  };
  const defaults={
   'key:Space':'toggle','key:Enter':'toggle','key:MediaPlayPause':'toggle',
-  'key:ArrowUp':'back','key:ArrowDown':'forward','key:PageUp':'pageBack','key:PageDown':'pageForward',
+  'key:ArrowUp':'back','key:ArrowDown':'forward','key:PageUp':'back','key:PageDown':'forward',
   'key:ArrowLeft':'slower','key:ArrowRight':'faster','key:Home':'home','key:KeyR':'restart',
   'key:Minus':'smaller','key:Equal':'larger','key:KeyF':'panels',
   'pad:button:0':'toggle','pad:button:1':'home','pad:button:2':'restart','pad:button:3':'panels',
@@ -25,10 +25,12 @@
  };
  let bindings={...defaults},enabled=store.get('tp-remote-enabled')!=='false',learning=null,learnTimer=0;
  let padFrame=0,padStates=new Map(),lastDevices='',keyHeld=new Map(),capturedKeys=new Set();
- let suspended=false,skipNextPad=true,lastSignal='',lastSignalAt=0;
+ let suspended=false,skipNextPad=true,lastSignal='',lastSignalAt=0,lastCommandAt=-Infinity,keyboardNavigation=false;
  try{const saved=JSON.parse(store.get('tp-remote-bindings'));if(saved&&saved.version===1&&saved.bindings&&typeof saved.bindings==='object'){
   bindings=Object.fromEntries(Object.entries(saved.bindings).filter(([signal,action])=>/^(key:[\w-]+|pad:button:\d+|pad:axis:\d+:[+-])$/.test(signal)&&(actions[action]||['pageBack','pageForward','none'].includes(action))));
  }}catch{}
+ // Old page-sized bindings retain their buttons and now use the same two-line step.
+ for(const signal of Object.keys(bindings)){if(bindings[signal]==='pageBack')bindings[signal]='back';if(bindings[signal]==='pageForward')bindings[signal]='forward';}
  $('remoteEnabled').checked=enabled;
  function notice(text,error=false){$('remoteMessage').textContent=bindRussian(text);$('remoteMessage').classList.toggle('error',error);}
  function save(){if(!store.set('tp-remote-bindings',JSON.stringify({version:1,bindings})))notice('Не удалось сохранить кнопки. Они работают до закрытия приложения.',true);}
@@ -61,7 +63,7 @@
  function receive(signal,standard=true){
   const now=performance.now();
   if(signal.startsWith('key:'))$('remoteDevice').textContent='Браузер получает команды клавиатуры.';
-  if(signal!==lastSignal||now-lastSignalAt>500){$('remoteSignal').textContent=bindRussian('Принято: '+label(signal));lastSignal=signal;lastSignalAt=now;}
+  if(signal!==lastSignal||now-lastSignalAt>500){const action=learning||(standard?bindings[signal]:null);$('remoteSignal').textContent=bindRussian('Последний сигнал: '+label(signal)+' · '+(actions[action]?.label||'действие не назначено'));lastSignal=signal;lastSignalAt=now;}
   if(learning){
    const action=learning,previous=bindings[signal];
    // Replace this action's complete mapping; do not guess A/B/X/Y on generic remotes.
@@ -75,16 +77,16 @@
  let learnedPads=new Set();
  try{const saved=JSON.parse(store.get('tp-remote-learned'));if(Array.isArray(saved))learnedPads=new Set(saved.filter(s=>typeof s==='string'&&s.startsWith('pad:')));}catch{}
  function rememberLearned(signal){learnedPads.add(signal);store.set('tp-remote-learned',JSON.stringify([...learnedPads]));}
+ function customKeyboard(){return Object.entries(bindings).some(([signal,action])=>signal.startsWith('key:')&&defaults[signal]!==action);}
+ function padAllowed(signal,pad){return learnedPads.has(signal)||(pad.mapping==='standard'&&!customKeyboard());}
  function blocked(){return document.hidden||suspended||!!document.querySelector('dialog[open]');}
  function adjust(id,delta){const input=$(id);input.value=String(Math.max(Number(input.min),Math.min(Number(input.max),Number(input.value)+delta)));input.dispatchEvent(new Event('input',{bubbles:true}));}
  function execute(action){
   if(!enabled||blocked()||!active||!action)return;
   if(action==='toggle'){play();return;}
-  if(['back','forward','pageBack','pageForward','home','restart'].includes(action)){
-   pause();
-   const line=Number($('font').value)*1.5;
-   const delta={back:-line,forward:line,pageBack:-viewport.clientHeight*.8,pageForward:viewport.clientHeight*.8}[action];
-   viewport.scrollTop=delta===undefined?0:Math.max(0,viewport.scrollTop+delta);position=viewport.scrollTop;
+  if(action==='back'||action==='forward'){scrollScriptLines(action==='back'?-1:1);return;}
+  if(action==='home'||action==='restart'){
+   pause();viewport.scrollTop=0;position=0;
    window.teleVoice?.layoutChanged();progress();
    if(action==='restart')play();return;
   }
@@ -93,26 +95,38 @@
   if(action==='panels')setImmersive(!document.body.classList.contains('immersive'));
  }
  function editable(target){return target instanceof Element&&!!target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])');}
- function signalFor(e){const code=e.code||({ ' ':'Space',MediaPlayPause:'MediaPlayPause' }[e.key])||e.key;return /^[\w-]+$/.test(code)?'key:'+code:null;}
+ function signalFor(e){const code=(e.code!=='Unidentified'&&e.code)||({ ' ':'Space',MediaPlayPause:'MediaPlayPause' }[e.key])||e.key;return /^[\w-]+$/.test(code)?'key:'+code:null;}
  document.addEventListener('keydown',e=>{
-  if(document.hidden||suspended||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||editable(e.target))return;
+  if(e.key==='Tab')keyboardNavigation=true;
+  const immersive=document.body.classList.contains('immersive');
+  if(document.hidden||suspended||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||(editable(e.target)&&!immersive))return;
   if(learning&&e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancelLearning();return;}
   const signal=signalFor(e);if(!signal||['key:Tab','key:ShiftLeft','key:ShiftRight','key:Escape'].includes(signal))return;
   if(blocked()&&!dialog.open)return;
   if(dialog.open){
    // Tab, Enter and Space still operate the setup buttons unless capture was explicitly armed.
    if(!learning){if(!e.repeat){$('remoteDevice').textContent='Браузер получает команды клавиатуры.';receive(signal);}return;}
-  }else if(!enabled||e.target.closest('button,a,summary'))return;
+  }else if(!enabled||(keyboardNavigation&&!immersive&&e.target.closest('button,a,summary')&&['Space','Enter'].includes(e.code)))return;
   const wasLearning=!!learning,action=receive(signal);
-  if(!wasLearning&&!action)return;
+  if(!wasLearning&&!action){if(customKeyboard()&&!e.repeat){keyHeld.clear();lastCommandAt=performance.now();}return;}
   e.preventDefault();e.stopImmediatePropagation();capturedKeys.add(signal);
+  if(!wasLearning){lastCommandAt=performance.now();keyboardNavigation=false;}
   const now=performance.now(),held=keyHeld.get(signal);
   if(!held){if(e.repeat)return;keyHeld.set(signal,{start:now,last:now});}
   else if(wasLearning||!actions[action]?.repeat||now-held.start<350||now-held.last<110)return;
   if(held)held.last=now;
   if(!wasLearning)execute(action);
  },true);
- document.addEventListener('keyup',e=>{const signal=signalFor(e);keyHeld.delete(signal);if(capturedKeys.delete(signal)){e.preventDefault();e.stopImmediatePropagation();}},true);
+ document.addEventListener('keyup',e=>{const signal=signalFor(e);keyHeld.delete(signal);if(capturedKeys.delete(signal)){lastCommandAt=performance.now();e.preventDefault();e.stopImmediatePropagation();}},true);
+ // Some remotes also emit mouse compatibility events for the same physical press.
+ // A finger/pen keeps the original tap-to-reveal behavior; a remote mouse echo does not.
+ function isRemotePointer(at=performance.now()){return enabled&&lastCommandAt>=at-450;}
+ window.teleRemote={isRemotePointer};
+ document.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'||e.pointerType==='pen')keyboardNavigation=false;},true);
+ for(const type of ['pointerdown','pointerup','mousedown','mouseup','click','auxclick'])document.addEventListener(type,e=>{
+  if(e.pointerType==='touch'||e.pointerType==='pen'||e.sourceCapabilities?.firesTouchEvents||blocked()||!e.target.closest('#reader,.controls'))return;
+  if(isRemotePointer()){e.preventDefault();e.stopImmediatePropagation();}
+ },true);
  // Pointer interaction returns commands to the reader; Tab navigation retains normal button activation.
  document.querySelector('.controls').addEventListener('click',e=>{if(e.detail>0&&e.target.closest('button'))viewport.focus({preventScroll:true});});
  function resetInput(){keyHeld.clear();capturedKeys.clear();padStates.clear();skipNextPad=true;}
@@ -136,12 +150,12 @@
     if(!held){
      held={start:time,last:time,suppressed:blocked()&&!learning};padStates.set(id,held);
      const capturing=!!learning;if(capturing)rememberLearned(signal);
-     const action=receive(signal,pad.mapping==='standard'||learnedPads.has(signal));
+     const allowed=padAllowed(signal,pad),action=receive(signal,allowed);
      if(capturing){held.suppressed=true;continue;}
-     if(!held.suppressed)execute(action);
+     if(!held.suppressed&&action){lastCommandAt=time;keyboardNavigation=false;execute(action);}
     }else if(!held.suppressed&&time-held.start>=350&&time-held.last>=110){
-     held.last=time;const action=(pad.mapping==='standard'||learnedPads.has(signal))?bindings[signal]:null;
-     if(actions[action]?.repeat)execute(action);
+     held.last=time;const action=padAllowed(signal,pad)?bindings[signal]:null;
+     if(actions[action]?.repeat){lastCommandAt=time;execute(action);}
     }
    }
   }
